@@ -1,0 +1,94 @@
+#!/bin/bash
+
+# Task 3: Summarize Pokémon Data
+# Objective: Create CSV report and calculate averages
+
+CSV_FILE="pokemon_summary.csv"
+REPORT_FILE="pokemon_report.txt"
+JSON_FILES=(*.json)
+
+# Check if JSON files exist
+if [[ ${#JSON_FILES[@]} -eq 0 ]] || [[ ${JSON_FILES[0]} == "*.json" ]]; then
+    echo "Error: No JSON files found in current directory."
+    echo "Please run Task 2 first to generate Pokémon JSON files."
+    exit 1
+fi
+
+echo "Found ${#JSON_FILES[@]} Pokémon JSON files"
+echo "=========================================="
+
+# Function to extract and convert units
+extract_data() {
+    local json_file="$1"
+    # Extract name, height (convert to meters), weight (convert to kg)
+    jq -r '. | "\(.name),\(.height/10),\(.weight/10)"' "$json_file" 2>/dev/null
+}
+
+# Create CSV header
+echo "Name,Height(m),Weight(kg)" > "$CSV_FILE"
+
+echo "Processing files and creating CSV..."
+echo "------------------------------------"
+
+# Process each JSON file and append to CSV
+for json_file in "${JSON_FILES[@]}"; do
+    if [[ -f "$json_file" ]]; then
+        data=$(extract_data "$json_file")
+        if [[ -n "$data" ]]; then
+            echo "$data" >> "$CSV_FILE"
+            echo "✓ Processed: $json_file"
+        else
+            echo "✗ Failed to process: $json_file"
+        fi
+    fi
+done
+
+echo ""
+echo "CSV file created: $CSV_FILE"
+echo ""
+
+# Display CSV content
+echo "CSV Content:"
+echo "============"
+cat "$CSV_FILE"
+echo ""
+
+# Calculate averages using awk
+echo "Calculating averages..."
+echo "======================="
+
+# Skip header line and calculate averages
+awk -F',' '
+NR > 1 {
+    height_sum += $2
+    weight_sum += $3
+    count++
+}
+END {
+    if (count > 0) {
+        avg_height = height_sum / count
+        avg_weight = weight_sum / count
+        
+        printf "Total Pokémon: %d\n", count
+        printf "Average Height: %.2f meters\n", avg_height
+        printf "Average Weight: %.2f kilograms\n", avg_weight
+        
+        # Also save to report file
+        print "=== Pokémon Data Summary ===" > "pokemon_report.txt"
+        print "Total Pokémon: " count >> "pokemon_report.txt"
+        print "Average Height: " avg_height " meters" >> "pokemon_report.txt"
+        print "Average Weight: " avg_weight " kilograms" >> "pokemon_report.txt"
+        print "=============================" >> "pokemon_report.txt"
+    }
+}' "$CSV_FILE"
+
+echo ""
+echo "Detailed report saved to: $REPORT_FILE"
+echo ""
+
+# Show individual Pokémon stats
+echo "Individual Pokémon Stats:"
+echo "========================="
+awk -F',' 'NR > 1 {
+    printf "%-12s %6.1fm %7.1fkg\n", $1, $2, $3
+}' "$CSV_FILE" | sort
