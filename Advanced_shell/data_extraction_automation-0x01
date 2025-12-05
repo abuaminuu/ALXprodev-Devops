@@ -1,15 +1,39 @@
 #!/bin/bash
 
-# Using jq, awk, and sed together
-jq -r '. | "\(.name) \(.height) \(.weight) \(.types[0].type.name)"' data.json 2>/dev/null | \
+# Debug version to see what's happening
+
+echo "=== Step 1: Check if data.json exists ==="
+if [ ! -f "data.json" ]; then
+    echo "ERROR: data.json not found!"
+    exit 1
+fi
+
+echo "=== Step 2: Raw jq output ==="
+jq -r '. | "Name: \(.name), Height: \(.height), Weight: \(.weight), Type: \(.types[0].type.name)"' data.json
+
+echo ""
+echo "=== Step 3: Processing pipeline ==="
+
+# Show each step
+echo "1. Extracting with jq:"
+jq -r '. | "\(.name) \(.height) \(.weight) \(.types[0].type.name)"' data.json
+
+echo ""
+echo "2. After awk processing:"
+jq -r '. | "\(.name) \(.height) \(.weight) \(.types[0].type.name)"' data.json | \
 awk '{
-    print $1 " " $2 " " $3 " " $4
-}' | \
-sed 's/^./\U&\E/; s/ [^ ]*$/ \U&\E/' | \
-awk '{
-    # Now $1 is "Pikachu", $2 is height, $3 is weight, $4 is "Electric"
-    formatted_height = $2 / 10
-    formatted_weight = $3 / 10
+    print "Raw: name=\"" $1 "\", height=" $2 ", weight=" $3 ", type=\"" $4 "\""
     
-    print $1 " is of type " $4 ", weighs " formatted_weight "kg, and is " formatted_height "m tall."
+    name = toupper(substr($1, 1, 1)) substr($1, 2)
+    type = toupper(substr($4, 1, 1)) substr($4, 2)
+    
+    print "Capitalized: name=\"" name "\", type=\"" type "\""
+    
+    height_m = $2 / 10
+    weight_kg = $3 / 10
+    
+    print "Converted: height=" height_m "m, weight=" weight_kg "kg"
+    
+    print "\nFinal output:"
+    print name " is of type " type ", weighs " weight_kg "kg, and is " height_m "m tall."
 }'
