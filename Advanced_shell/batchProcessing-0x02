@@ -1,0 +1,88 @@
+#!/bin/bash
+
+# Task 2: Batch Pokémon Data Retrieval
+# Objective: Retrieve data for multiple Pokémon and save to separate files
+
+# List of Pokémon to retrieve
+POKEMON_LIST=("Bulbasaur" "Ivysaur" "Venusaur" "Charmander" "Charmeleon")
+API_BASE_URL="https://pokeapi.co/api/v2/pokemon"
+DELAY_SECONDS=2  # Delay between requests to avoid rate limiting
+ERROR_LOG="batch_errors.txt"
+
+# Clear previous error log
+> "$ERROR_LOG"
+
+echo "Starting batch Pokémon data retrieval..."
+echo "========================================="
+
+# Function to make API request for a Pokémon
+fetch_pokemon_data() {
+    local pokemon_name="$1"
+    local filename="${pokemon_name,,}.json"  # Convert to lowercase
+    
+    echo "Fetching data for $pokemon_name..."
+    
+    # Make API request with curl
+    if curl -s -f "${API_BASE_URL}/${pokemon_name,,}" -o "$filename" 2>> "$ERROR_FILE"; then
+        # Check if response is valid JSON
+        if jq empty "$filename" 2>> "$ERROR_FILE"; then
+            echo "  ✅ Saved to: $filename"
+            return 0
+        else
+            echo "  ❌ Invalid JSON response for $pokemon_name"
+            rm -f "$filename"  # Remove invalid file
+            return 1
+        fi
+    else
+        echo "  ❌ Failed to fetch $pokemon_name"
+        return 1
+    fi
+}
+
+# Function to display summary
+display_summary() {
+    echo ""
+    echo "Batch retrieval completed!"
+    echo "=========================="
+    echo "Total Pokémon requested: ${#POKEMON_LIST[@]}"
+    
+    local success_count=0
+    for pokemon in "${POKEMON_LIST[@]}"; do
+        filename="${pokemon,,}.json"
+        if [[ -f "$filename" ]]; then
+            ((success_count++))
+        fi
+    done
+    
+    echo "Successfully retrieved: $success_count"
+    
+    if [[ $success_count -ne ${#POKEMON_LIST[@]} ]]; then
+        echo "Failed: $(( ${#POKEMON_LIST[@]} - success_count ))"
+        echo "Check $ERROR_LOG for details"
+    fi
+    
+    echo ""
+    echo "Files created:"
+    ls -la *.json 2>/dev/null || echo "No JSON files found"
+}
+
+# Main execution
+main() {
+    echo "Processing ${#POKEMON_LIST[@]} Pokémon:"
+    echo "----------------------------------------"
+    
+    for pokemon in "${POKEMON_LIST[@]}"; do
+        fetch_pokemon_data "$pokemon"
+        
+        # Add delay between requests (except after last one)
+        if [[ "$pokemon" != "${POKEMON_LIST[-1]}" ]]; then
+            echo "  Waiting ${DELAY_SECONDS} seconds..."
+            sleep "$DELAY_SECONDS"
+        fi
+    done
+    
+    display_summary
+}
+
+# Run main function
+main "$@"
