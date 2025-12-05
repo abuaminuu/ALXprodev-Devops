@@ -1,0 +1,116 @@
+#!/bin/bash
+
+# Advanced parallel version with job control
+
+POKEMONS=("Bulbasaur" "Ivysaur" "Venusaur" "Charmander" "Charmeleon")
+CONCURRENT_LIMIT=3
+declare -A JOB_PIDS
+declare -A JOB_STATUS
+declare -A START_TIME
+
+echo "=== Advanced Parallel Pokémon Fetcher ==="
+echo ""
+
+# Function to run a job
+run_job() {
+    local pokemon=$1
+    local job_id=$2
+    local filename="${pokemon,,}.json"
+    
+    START_TIME[$job_id]=$(date +%s%N)
+    
+    # Download with timeout
+    timeout 30 curl -s "https://pokeapi.co/api/v2/pokemon/${pokemon,,}" -o "$filename" 2>/dev/null
+    
+    if [[ $? -eq 0 ]] && jq empty "$filename" 2>/dev/null; then
+        JOB_STATUS[$job_id]="SUCCESS"
+    else
+        JOB_STATUS[$job_id]="FAILED"
+        rm -f "$filename" 2>/dev/null
+    fi
+}
+
+# Function to monitor jobs
+monitor_jobs() {
+    while true; do
+        clear
+        echo "=== Parallel Download Monitor ==="
+        echo "Time: $(date '+%H:%M:%S')"
+        echo "Active jobs: ${#JOB_PIDS[@]}/$CONCURRENT_LIMIT"
+        echo "---------------------------------"
+        
+        # Show job status
+        for job_id in "${!JOB_PIDS[@]}"; do
+            local pid=${JOB_PIDS[$job_id]}
+            local pokemon=${POKEMONS[$((job_id-1))]}
+            
+            if kill -0 "$pid" 2>/dev/null; then
+                # Job is still running
+                local elapsed=$(( ($(date +%s%N) - ${START_TIME[$job_id]}) / 1000000 ))
+                echo "  Job $job_id ($pokemon): RUNNING (${elapsed}ms)"
+            else
+                # Job has finished
+                wait "$pid" 2>/dev/null
+                local status=${JOB_STATUS[$job_id]}
+                echo "  Job $job_id ($pokemon): $status"
+                unset JOB_PIDS[$job_id]
+            fi
+        done
+        
+        # Break if no jobs left
+        if [[ ${#JOB_PIDS[@]} -eq 0 ]]; then
+            break
+        fi
+        
+        sleep 0.5
+    done
+}
+
+# Main execution
+main() {
+    local job_counter=0
+    
+    # Start monitor in background
+    monitor_jobs &
+    monitor_pid=$!
+    
+    for pokemon in "${POKEMONS[@]}"; do
+        # Wait if we're at the limit
+        while [[ ${#JOB_PIDS[@]} -ge $CONCURRENT_LIMIT ]]; do
+            sleep 0.1
+        done
+        
+        # Start new job
+        ((job_counter++))
+        run_job "$pokemon" "$job_counter" &
+        JOB_PIDS[$job_counter]=$!
+        
+        # Small delay between starting jobs
+        sleep 0.05
+    done
+    
+    # Wait for monitor to finish
+    wait $monitor_pid
+    
+    echo ""
+    echo "=== Final Results ==="
+    echo "Total Pokémon: ${#POKEMONS[@]}"
+    echo ""
+    
+    # Show final status
+    for ((i=0; i<${#POKEMONS[@]}; i++)); do
+        local pokemon="${POKEMONS[$i]}"
+        local filename="${pokemon,,}.json"
+        local status=${JOB_STATUS[$((i+1))]}
+        
+        if [[ "$status" == "SUCCESS" ]] && [[ -f "$filename" ]]; then
+            size=$(wc -c < "$filename" 2>/dev/null || echo "0")
+            echo "  ✓ $filename ($size bytes)"
+        else
+            echo "  ✗ $pokemon ($status)"
+        fi
+    done
+}
+
+# Run main
+main
