@@ -1,31 +1,51 @@
 #!/bin/bash
 
-# Task 1: Extract Pokémon Data
-# Using only jq, awk, sed as required
-
 INPUT_FILE="data.json"
 
-# Check if file exists
-if [[ ! -f "$INPUT_FILE" ]]; then
-    echo "Error: $INPUT_FILE not found" >&2
-    exit 1
-fi
+# Function to validate input
+validate_json() {
+    if [[ ! -f "$INPUT_FILE" ]]; then
+        echo "Error: File '$INPUT_FILE' not found." >&2
+        return 1
+    fi
+    
+    if ! jq empty "$INPUT_FILE" 2>/dev/null; then
+        echo "Error: '$INPUT_FILE' contains invalid JSON." >&2
+        return 1
+    fi
+    
+    return 0
+}
 
-# Extract and format in one pipeline
-jq -r '. | "\(.name)|\(.height)|\(.weight)|\(.types[0].type.name)"' "$INPUT_FILE" 2>/dev/null | \
-awk -F'|' '{
-    name = $1
-    height = $2
-    weight = $3
-    type = $4
+# Function to extract and format data
+extract_pokemon_data() {
+    # Use jq to extract all needed data at once
+    jq -r '
+        .name as $name |
+        (.height/10) as $height |
+        (.weight/10) as $weight |
+        .types[0].type.name as $type |
+        "\($name)|\($height)|\($weight)|\($type)"
+    ' "$INPUT_FILE" | \
     
-    # Convert height from decimeters to meters
-    formatted_height = height / 10
+    # Pipe to awk for formatting
+    awk -F'|' '{
+        # Format the output string exactly as requested
+        printf "%s is of type %s, weighs %.1fkg, and is %.1fm tall.\n", 
+               $1, $4, $3, $2
+    }'
+}
+
+# Main execution
+main() {
+    if ! validate_json; then
+        exit 1
+    fi
     
-    # Convert weight from hectograms to kilograms  
-    formatted_weight = weight / 10
+    echo "Extracting Pokémon data..."
+    echo "--------------------------"
     
-    # Format exactly as required
-    printf "%s is of type %s, weighs %dkg, and is %.1fm tall.\n", 
-           name, type, formatted_weight, formatted_height
-}'
+    extract_pokemon_data
+}
+
+main "$@"
