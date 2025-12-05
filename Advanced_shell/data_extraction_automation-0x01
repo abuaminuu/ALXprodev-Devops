@@ -1,51 +1,15 @@
 #!/bin/bash
 
-INPUT_FILE="data.json"
-
-# Function to validate input
-validate_json() {
-    if [[ ! -f "$INPUT_FILE" ]]; then
-        echo "Error: File '$INPUT_FILE' not found." >&2
-        return 1
-    fi
+# Using jq, awk, and sed together
+jq -r '. | "\(.name) \(.height) \(.weight) \(.types[0].type.name)"' data.json 2>/dev/null | \
+awk '{
+    print $1 " " $2 " " $3 " " $4
+}' | \
+sed 's/^./\U&\E/; s/ [^ ]*$/ \U&\E/' | \
+awk '{
+    # Now $1 is "Pikachu", $2 is height, $3 is weight, $4 is "Electric"
+    formatted_height = $2 / 10
+    formatted_weight = $3 / 10
     
-    if ! jq empty "$INPUT_FILE" 2>/dev/null; then
-        echo "Error: '$INPUT_FILE' contains invalid JSON." >&2
-        return 1
-    fi
-    
-    return 0
-}
-
-# Function to extract and format data
-extract_pokemon_data() {
-    # Use jq to extract all needed data at once
-    jq -r '
-        .name as $name |
-        (.height/10) as $height |
-        (.weight/10) as $weight |
-        .types[0].type.name as $type |
-        "\($name)|\($height)|\($weight)|\($type)"
-    ' "$INPUT_FILE" | \
-    
-    # Pipe to awk for formatting
-    awk -F'|' '{
-        # Format the output string exactly as requested
-        printf "%s is of type %s, weighs %.1fkg, and is %.1fm tall.\n", 
-               $1, $4, $3, $2
-    }'
-}
-
-# Main execution
-main() {
-    if ! validate_json; then
-        exit 1
-    fi
-    
-    echo "Extracting Pokémon data..."
-    echo "--------------------------"
-    
-    extract_pokemon_data
-}
-
-main "$@"
+    print $1 " is of type " $4 ", weighs " formatted_weight "kg, and is " formatted_height "m tall."
+}'
