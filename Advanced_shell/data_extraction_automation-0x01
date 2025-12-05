@@ -1,113 +1,31 @@
 #!/bin/bash
 
-echo "Name: $NAME"
 # Task 1: Extract Pokémon Data
-# Objective: Use jq, awk, sed to extract data from JSON file
+# Using only jq, awk, sed as required
 
 INPUT_FILE="data.json"
-ERROR_FILE="extraction_errors.txt"
 
-# Clear previous error file
-> "$ERROR_FILE"
-
-# Check if input file exists
+# Check if file exists
 if [[ ! -f "$INPUT_FILE" ]]; then
-    echo "Error: $INPUT_FILE not found. Run Task 0 first." | tee -a "$ERROR_FILE"
+    echo "Error: $INPUT_FILE not found" >&2
     exit 1
 fi
 
-# Validate JSON file
-if ! jq empty "$INPUT_FILE" 2>> "$ERROR_FILE"; then
-    echo "Error: Invalid JSON in $INPUT_FILE" | tee -a "$ERROR_FILE"
-    exit 1
-fi
-
-echo "Extracting Pokémon data from $INPUT_FILE..."
-echo "------------------------------------------------"
-
-# Extract data using jq and format with awk/sed
-# Method 1: Using jq with raw output and pipe to awk/sed
-echo "=== Method 1: Step-by-step extraction ==="
-
-# Extract individual fields
-NAME=$(jq -r '.name' "$INPUT_FILE" 2>> "$ERROR_FILE")
-HEIGHT=$(jq -r '.height' "$INPUT_FILE" 2>> "$ERROR_FILE")
-WEIGHT=$(jq -r '.weight' "$INPUT_FILE" 2>> "$ERROR_FILE")
-
-# Extract type(s) - Pokémon can have multiple types
-TYPE=$(jq -r '.types[].type.name' "$INPUT_FILE" 2>> "$ERROR_FILE" | head -1)
-
-# Convert height from decimeters to meters (API returns in decimeters)
-HEIGHT_M=$(echo "scale=1; $HEIGHT / 10" | bc 2>/dev/null || echo "$HEIGHT")
-
-# Convert weight from hectograms to kilograms (API returns in hectograms)
-WEIGHT_KG=$(echo "scale=1; $WEIGHT / 10" | bc 2>/dev/null || echo "$WEIGHT")
-
-# Format and output
-echo "$NAME is of type $TYPE, weighs ${WEIGHT_KG}kg, and is ${HEIGHT_M}m tall."
-
-echo ""
-echo "=== Method 2: Single pipeline extraction ==="
-
-# Extract and format in one pipeline using jq, awk, and sed
-jq -r '. | "\(.name)|\(.height)|\(.weight)|\(.types[0].type.name)"' "$INPUT_FILE" 2>> "$ERROR_FILE" | \
+# Extract and format in one pipeline
+jq -r '. | "\(.name)|\(.height)|\(.weight)|\(.types[0].type.name)"' "$INPUT_FILE" 2>/dev/null | \
 awk -F'|' '{
-    height_m = $2 / 10
-    weight_kg = $3 / 10
-    printf "%s is of type %s, weighs %.1fkg, and is %.1fm tall.\n", $1, $4, weight_kg, height_m
-}'
-
-echo ""
-echo "=== Method 3: Advanced formatting with sed ==="
-
-# Create a template and fill it with extracted data
-TEMPLATE="NAME is of type TYPE, weighs WEIGHTkg, and is HEIGHTm tall."
-
-# Extract and substitute
-jq -r '. | "NAME=\(.name)|TYPE=\(.types[0].type.name)|WEIGHT=\(.weight/10)|HEIGHT=\(.height/10)"' "$INPUT_FILE" 2>> "$ERROR_FILE" | \
-while IFS='|' read -r name_part type_part weight_part height_part; do
-    # Extract values from the parts
-    name_val=$(echo "$name_part" | sed 's/NAME=//')
-    type_val=$(echo "$type_part" | sed 's/TYPE=//')
-    weight_val=$(echo "$weight_part" | sed 's/WEIGHT=//')
-    height_val=$(echo "$height_part" | sed 's/HEIGHT=//')
+    name = $1
+    height = $2
+    weight = $3
+    type = $4
     
-    # Format the template with actual values
-    echo "$TEMPLATE" | \
-    sed "s/NAME/$name_val/g" | \
-    sed "s/TYPE/$type_val/g" | \
-    sed "s/WEIGHT/$weight_val/g" | \
-    sed "s/HEIGHT/$height_val/g"
-done
-
-echo ""
-echo "=== Bonus: Extract all types (if multiple) ==="
-
-# Extract all types and format them nicely
-ALL_TYPES=$(jq -r '.types[].type.name' "$INPUT_FILE" 2>> "$ERROR_FILE" | tr '\n' '/' | sed 's/\/$//')
-TYPE_COUNT=$(jq '.types | length' "$INPUT_FILE" 2>> "$ERROR_FILE")
-
-if [[ "$TYPE_COUNT" -gt 1 ]]; then
-    # Replace slashes with commas for better formatting
-    FORMATTED_TYPES=$(echo "$ALL_TYPES" | sed 's/\//, /g' | sed 's/, $//')
-    echo "$NAME has $TYPE_COUNT types: $FORMATTED_TYPES"
-else
-    echo "$NAME has 1 type: $ALL_TYPES"
-fi
-
-echo ""
-echo "=== Validation: Raw extracted values ==="
-echo "Height (decimeters): $HEIGHT"
-echo "Weight (hectograms): $WEIGHT"
-echo "Primary type: $TYPE"
-echo "Height (meters): ${HEIGHT_M}m"
-echo "Weight (kilograms): ${WEIGHT_KG}kg"
-
-# Check for errors
-if [[ -s "$ERROR_FILE" ]]; then
-    echo ""
-    echo "⚠️  Errors occurred during extraction. Check $ERROR_FILE"
-else
-    echo ""
-    echo "✅ Extraction completed successfully!"
-fi
+    # Convert height from decimeters to meters
+    formatted_height = height / 10
+    
+    # Convert weight from hectograms to kilograms  
+    formatted_weight = weight / 10
+    
+    # Format exactly as required
+    printf "%s is of type %s, weighs %dkg, and is %.1fm tall.\n", 
+           name, type, formatted_weight, formatted_height
+}'
