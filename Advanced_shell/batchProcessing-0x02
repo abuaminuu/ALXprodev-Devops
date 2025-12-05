@@ -160,3 +160,4 @@ for name in "${pokemon_list[@]}"; do
 
 	sleep 1  # rate-limiting
 done
+
